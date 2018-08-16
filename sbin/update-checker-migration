@@ -1,0 +1,223 @@
+#!/usr/bin/ruby
+
+# Copyright (C) 2018 Thorsten Kukuk
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# in Version 2 as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with rebootmgr; If not, see <http://www.gnu.org/licenses/>.
+
+require 'optparse'
+require 'fileutils'
+require "suse/connect"
+
+def release_notes_url(product, version)
+  myproduct = product
+  myversion = version
+  case myproduct
+  when "SLES", "SLED"
+    myversion.sub! '.','-SP'
+    myproduct = "SUSE-#{product}"
+  when "SLE-HPC"
+    myversion.sub! '.','-SP'
+  when "CAASP"
+    myproduct = "SUSE-#{product}"
+  end
+  url = "https://www.suse.com/releasenotes/x86_64/#{myproduct}/#{myversion}/"
+  return url
+end
+
+
+options = {
+  :config => "/etc/update-checker.conf",
+  :verbose => false,
+  :root => nil
+}
+
+STDOUT.sync = true
+
+save_argv = Array.new(ARGV)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: update-checker-migration [options]"
+
+  opts.on("-c", "--config FILE", "Specify an alternate config file") do |f|
+    options[:config] = f
+  end
+
+  opts.on("-v", "--[no-]verbose", "Increase verbosity") do |v|
+    options[:verbose] = v
+  end
+
+  opts.on("-R", "--root DIR", "Operate on a different root directory") do |r|
+    options[:root] = r
+    SUSE::Connect::System.filesystem_root = r
+  end
+
+end.parse!
+
+# Check if we have migration targets
+begin
+  system_products = SUSE::Connect::Migration::system_products
+
+  if system_products.length == 0
+    print "No products found\n"
+    exit 1
+  end
+
+  if options[:verbose]
+    print "Installed products:\n"
+    system_products.each {|p|
+      printf "  %-25s %s\n", "#{p.identifier}/#{p.version}/#{p.arch}", p.summary
+    }
+    print "\n"
+  end
+rescue => e
+  print "Can't determine the list of installed products: #{e.class}: #{e.message}\n"
+  exit 1
+end
+
+# Fetch migration targets
+begin
+  migrations_all = SUSE::Connect::YaST.system_migrations system_products
+rescue => e
+  print "Can't get available migrations from server: #{e.class}: #{e.message}\n"
+  exit 1
+end
+
+if migrations_all.length == 0
+  print "No migration targets found\n" if options[:verbose]
+  exit 0
+end
+
+if options[:to_product]
+  begin
+    identifier, version, arch = options[:to_product].split('/')
+    new_product = OpenStruct.new(
+      identifier: identifier,
+      version:   version,
+      arch:       arch
+    )
+    migrations_all = SUSE::Connect::YaST.system_offline_migrations(system_products, new_product)
+  rescue => e
+    print "Can't get available migrations from server: #{e.class}: #{e.message}\n"
+    exit 1
+  end
+end
+
+#preprocess the migrations lists
+migrations = Array.new
+migrations_unavailable = Array.new
+migrations_all.each do |migration|
+  migr_available = true
+  migration.each do |p|
+    p.available = !defined?(p.available) || p.available
+    p.already_installed = !! system_products.detect { |ip| ip.identifier.eql?(p.identifier) && ip.version.eql?(p.version) && ip.arch.eql?(p.arch) }
+    if !p.available
+      migr_available = false
+    end
+  end
+  # put already_installed products last and base products first
+  migration = migration.sort_by.with_index { |p, idx| [p.already_installed ? 1 : 0, p.base ? 0 : 1, idx] }
+  if migr_available
+    migrations << migration
+  else
+    migrations_unavailable << migration
+  end
+end
+
+output_stdout=false
+output_issue=false
+open options[:config] do |config_file|
+  config_file.each_line do |line|
+    unless line.chomp.empty? || line =~ /^#/
+      option, argument = line.split("=", 2)
+      option=option.delete(" \t\r\n")
+      if option == "output"
+        argument=argument.delete(" \t\r\n")
+        argument.split(',').each do |arg|
+          case arg
+          when "stdout"
+            output_stdout=true
+          when "issue"
+            output_issue=true
+          else
+            print "ERROR: unknown output value: #{arg}\n"
+          end
+        end
+      end
+    end
+  end
+end
+
+if output_stdout == false && output_issue == false
+  output_stdout=true
+end
+
+if migrations_unavailable.length > 0
+  print "Unavailable migrations (product is not mirrored):\n\n"
+  migrations_unavailable.each do |migration|
+    url=""
+    migration.each do |p|
+      print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.available ? "" : " (not available)") + (p.already_installed ? " (already installed)" : "") + "\n       "
+      if p.base
+        url = release_notes_url(p.identifier, p.version)
+      end
+    end
+    print "#{url}\n"
+    print "\n"
+  end
+  print "\n"
+end
+
+if migrations.length > 0
+  print "Available migrations:\n\n" if output_stdout
+  number=0
+  migrations.each do |migration|
+    number+=1
+    url=""
+    product_list=""
+    migration.each do |p|
+      if p.base
+        url = release_notes_url(p.identifier, p.version)
+      end
+      if output_stdout
+        print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.already_installed ? " (already installed)" : "") + "\n       "
+      end
+      if output_issue && !p.already_installed && number == 1
+        product_list=product_list + " #{p.identifier}/#{p.version}/#{p.arch}"
+      end
+    end
+    if output_stdout
+      print "#{url}\n"
+      print "\n"
+    end
+    if output_issue && number == 1
+      begin
+        file = File.open("/var/run/issue.d/82-migration", "w")
+      rescue IOError => e
+        print "ERROR: creating of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
+      end
+      begin
+        file.write("New version available:#{product_list}\nRelease Notes: #{url}\n\n")
+      rescue IOError => e
+        print "ERROR: writing of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
+      ensure
+        file.close unless file.nil?
+      end
+      if ! system "/usr/sbin/issue-generator"
+        print "Executing /usr/sbin/issue-generator failed!\n\n"
+      end
+    end
+  end
+  print "\n" if output_stdout
+end
+
+exit 0

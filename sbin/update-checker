@@ -1,0 +1,186 @@
+#!/usr/bin/perl
+
+# Copyright (C) 2018 Thorsten Kukuk
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# in Version 2 as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with rebootmgr; If not, see <http://www.gnu.org/licenses/>.
+
+=head1 NAME
+
+update-checker - check for new updates
+
+=head1 SYNOPSIS
+
+update-checker [variant]
+
+=head1 DESCRIPTION
+
+Check if updates for this system are available. If yes, inform the admin
+or other tools via this depending on configured paths.
+
+=head1 OPTIONS
+
+  -c|--config <file>  Use different configuration file
+  -v|--verbose         More verbose output
+  --up                     Check for available updates via "zypper up", default
+  --patches              Check for available patches via "zypper patch"
+  --dup                    Check for distribution updates via "zypper dup"
+  --usage                Print usage
+  --man                  Display manual page
+  -h|-?                    Help
+
+=cut
+
+use strict;
+use warnings;
+use Pod::Usage;
+use XML::Twig;
+use Config::IniFiles;
+
+#
+# process command line arguments
+#
+use Getopt::Long;
+my $help = 0;
+my $man = 0;
+my $usage = 0;
+my $configfile = '/etc/update-checker.conf';
+my $verbose = 0;
+my $output = "stdout";
+my $variant = "update";
+my $orphaned = 1;
+
+GetOptions('c|config=s' => \$configfile,
+	   'v|verbose' => \$verbose,
+           'man' => \$man,
+           'usage' => \$usage,
+           'help|h|?' => \$help) or pod2usage(2);
+pod2usage(0) if $help;
+pod2usage(-exitstatus => 0, -verbose => 2) if $man;
+pod2usage(-exitstatus => 0, -verbose => 0) if $usage;
+
+my $cfg = new Config::IniFiles(-file => $configfile);
+if (defined $cfg) {
+    $output = $cfg->val("global", "output", "stdout");
+    $variant = $cfg->val("update", "variant", "update");
+    $orphaned = $cfg->val("update", "orphaned", 1);
+}
+
+my $package_count = 0;
+my $patch_count = 0;
+my $dup_install_count = 0;
+my $dup_update_count = 0;
+my $dup_remove_count = 0;
+my @packages;
+my @patches;
+my @dup_install;
+my @dup_update;
+my @dup_remove;
+my $zypper_output;
+
+if ($variant eq "update") {
+    $zypper_output = `zypper --xml list-updates 2>&1`;
+} elsif ($variant eq "patch") {
+    $zypper_output = `zypper --xml list-patches 2>&1`;
+} elsif ($variant eq "dup") {
+    $zypper_output = `zypper --xml --non-interactive dup --dry-run 2>&1`;
+} else {
+    warn "ERROR: unknown variant \"$variant\"\n";
+    exit 1;
+}
+
+my $Parser =
+    new XML::Twig(twig_handlers=>{'stream/update-status/update-list/update' => \&GetUpdateList,
+		  'stream/install-summary/to-upgrade/solvable' => \&GetDupUpdates,
+		  'stream/install-summary/to-install/solvable' => \&GetDupInstalls,
+		  'stream/install-summary/to-remove/solvable' => \&GetDupRemoves});
+$Parser->parse($zypper_output);
+
+@packages = sort @packages unless $package_count == 0;
+@patches = sort @patches unless $patch_count == 0;
+@dup_install = sort @dup_install unless $dup_install_count == 0;
+@dup_update = sort @dup_update unless $dup_update_count == 0;
+@dup_remove = sort @dup_remove unless $dup_remove_count == 0;
+
+if ($orphaned == 1) {
+    $zypper_output = `zypper --xml pa --orphaned  2>&1`;
+    $Parser =
+	new XML::Twig(twig_handlers=>{'stream/update-status/update-list/update' => \&GetOrphanedList});
+		      $Parser->parse($zypper_output);
+}
+
+if ($package_count > 0) {
+    print "Pending updates: $package_count\n";
+    print "List of packages: ";
+    foreach (@packages) {
+	print "$_ ";
+    }
+    print "\n";
+}
+
+if ($patch_count > 0) {
+    print "Pending patches: $patch_count\n";
+    print "List of patches: ";
+    foreach (@patches) {
+	print "$_ ";
+    }
+    print "\n";
+}
+
+if ($dup_install_count > 0 || $dup_update_count > 0 || $dup_remove_count > 0) {
+    print "Distribution update: $dup_install_count to install, $dup_update_count to update, $dup_remove_count to remove\n";
+}
+
+exit;
+
+sub GetUpdateList
+{
+    my ($t, $update) = @_;
+
+    if ($update->{'att'}->{'kind'} eq "package") {
+	$package_count++;
+	push @packages, $update->{'att'}->{'name'};
+    } elsif ($update->{'att'}->{'kind'} eq "patch") {
+	$patch_count++;
+	push @patches, $update->{'att'}->{'name'};
+    }
+}
+
+sub GetDupUpdates
+{
+    my ($t, $pkg) = @_;
+
+    if ($pkg->{'att'}->{'type'} eq "package") {
+	$dup_update_count++;
+	push @dup_update, $pkg->{'att'}->{'name'};
+    }
+}
+
+sub GetDupInstalls
+{
+    my ($t, $pkg) = @_;
+
+    if ($pkg->{'att'}->{'type'} eq "package") {
+	$dup_install_count++;
+	push @dup_install, $pkg->{'att'}->{'name'};
+    }
+}
+
+sub GetDupRemoves
+{
+    my ($t, $pkg) = @_;
+
+    if ($pkg->{'att'}->{'type'} eq "package") {
+	$dup_remove_count++;
+	push @dup_remove, $pkg->{'att'}->{'name'};
+    }
+}
