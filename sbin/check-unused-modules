@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+
+# Copyright (C) 2018 Thorsten Kukuk
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# in Version 2 as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; If not, see <http://www.gnu.org/licenses/>.
+
+=head1 NAME
+
+check-unused-modules - check if there are not needed SLE Modules registered
+
+=head1 SYNOPSIS
+
+check-unused-modules
+
+=head1 DESCRIPTION
+
+Check every registered module on a SLE system, if this is used or could be
+removed.
+
+=head1 OPTIONS
+
+  -c|--config <file>  Use different configuration file
+  -v|--verbose         More verbose output
+  --usage                Print usage
+  --man                  Display manual page
+  -h|-?                    Help
+
+=cut
+
+use strict;
+use warnings;
+use Pod::Usage;
+use XML::Twig;
+use Config::IniFiles;
+
+#
+# process command line arguments
+#
+use Getopt::Long;
+my $help = 0;
+my $man = 0;
+my $usage = 0;
+my $configfile = '/etc/update-checker.conf';
+my $verbose = 0;
+my $output = "stdout";
+
+GetOptions('c|config=s' => \$configfile,
+	   'v|verbose' => \$verbose,
+           'man' => \$man,
+           'usage' => \$usage,
+           'help|h|?' => \$help) or pod2usage(2);
+pod2usage(0) if $help;
+pod2usage(-exitstatus => 0, -verbose => 2) if $man;
+pod2usage(-exitstatus => 0, -verbose => 0) if $usage;
+
+if (-r $configfile) {
+    my $cfg = new Config::IniFiles(-file => $configfile);
+    if (defined $cfg) {
+        $output = $cfg->val("global", "output", "stdout");
+    }
+}
+
+my $used_count = 0;
+my $unused_count = 0;
+my @UsedModules;
+my @UnusedModules;
+my $zypper_output;
+
+$zypper_output = `zypper refresh -f --services`;
+$zypper_output = `zypper --no-refresh --xml services 2>&1`;
+my $Parser =
+    new XML::Twig(twig_handlers=>{'stream/service-list/service' => \&GetServiceList});
+$Parser->parse($zypper_output);
+
+@UsedModules = sort @UsedModules unless $used_count == 0;
+@UnusedModules = sort @UnusedModules unless $unused_count == 0;
+
+exit;
+
+sub GetServiceList
+{
+    my ($t, $service) = @_;
+    my $repo_args = "";
+    my $product_summary = "Unknown";
+    my $product_name = "";
+    my $product_id = "Unknown";
+
+    # print "$service->{'att'}->{'alias'}\n";
+
+    my @repos = $service->children('repo');
+
+    foreach my $repo (@repos) {
+	$repo_args = "$repo_args -r $repo->{'att'}->{'alias'}" if $repo->{'att'}->{'enabled'};
+    }
+    my $zypper_products = `zypper --xml --no-refresh products $repo_args`;
+    my $prodparser = new XML::Twig;
+    $prodparser->parse($zypper_products);
+    my $root = $prodparser->root;
+    my $prodlist = $root->first_child('product-list');
+    my @products = $prodlist->children('product');
+    if (scalar @products != 1) {
+	my $num = scalar @products;
+        print "ERROR: $service->{'att'}->{'alias'}: Wrong number of products: $num\n";
+	print "       Result can be wrong\n";
+	foreach my $product (@products) {
+	    print "       $product->{'att'}->{'summary'}\n";
+	}
+	#print "       Run zypper --xml --no-refresh products $repo_args\n";
+    }
+    foreach my $product (@products) {
+        $product_summary = $product->{'att'}->{'summary'};
+        $product_name = $product->{'att'}->{'name'};
+	$product_id = "$product->{'att'}->{'name'}/$product->{'att'}->{'version'}/$product->{'att'}->{'arch'}";
+    }
+
+    my $zypper_packages = `zypper --xml --no-refresh packages -i $repo_args |grep ^i |grep -v $product_name-release |wc -l`;
+    chomp $zypper_packages;
+
+    print "$product_summary: $product_id ($zypper_packages)\n";
+}
