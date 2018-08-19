@@ -16,11 +16,11 @@
 
 =head1 NAME
 
-check-unused-modules - check if there are not needed SLE Modules registered
+check-for-unused-modules - check for not needed SLE Modules
 
 =head1 SYNOPSIS
 
-check-unused-modules
+check-for-unused-modules
 
 =head1 DESCRIPTION
 
@@ -94,37 +94,53 @@ sub GetServiceList
     my $product_summary = "Unknown";
     my $product_name = "";
     my $product_id = "Unknown";
+    my @repos = $service->children('repo');
 
     # print "$service->{'att'}->{'alias'}\n";
 
-    my @repos = $service->children('repo');
+    if ($service->{'att'}->{'alias'} =~ /^SMT-/) {
+	# Looks like this is coming from SMT, which means one service file for all products.
 
-    foreach my $repo (@repos) {
-	$repo_args = "$repo_args -r $repo->{'att'}->{'alias'}" if $repo->{'att'}->{'enabled'};
-    }
-    my $zypper_products = `zypper --xml --no-refresh products $repo_args`;
-    my $prodparser = new XML::Twig;
-    $prodparser->parse($zypper_products);
-    my $root = $prodparser->root;
-    my $prodlist = $root->first_child('product-list');
-    my @products = $prodlist->children('product');
-    if (scalar @products != 1) {
-	my $num = scalar @products;
-        print "ERROR: $service->{'att'}->{'alias'}: Wrong number of products: $num\n";
-	print "       Result can be wrong\n";
-	foreach my $product (@products) {
-	    print "       $product->{'att'}->{'summary'}\n";
+	my %products = ();
+
+	foreach my $repo (@repos) {
+	    my $product = $repo->{'att'}->{'alias'};
+	    $product =~ s/.*://;
+	    $product =~ s/-Pool$//;
+	    $product =~ s/-Updates$//;
+	    push  $products{$product}, $repo->{'att'}->{'alias'};
+	    print "$product\n";
 	}
-	#print "       Run zypper --xml --no-refresh products $repo_args\n";
-    }
-    foreach my $product (@products) {
-        $product_summary = $product->{'att'}->{'summary'};
-        $product_name = $product->{'att'}->{'name'};
-	$product_id = "$product->{'att'}->{'name'}/$product->{'att'}->{'version'}/$product->{'att'}->{'arch'}";
-    }
 
-    my $zypper_packages = `zypper --xml --no-refresh packages -i $repo_args |grep ^i |grep -v $product_name-release |wc -l`;
-    chomp $zypper_packages;
+    } else {
+	# Registered against SCC
 
-    print "$product_summary: $product_id ($zypper_packages)\n";
+	foreach my $repo (@repos) {
+	    $repo_args = "$repo_args -r $repo->{'att'}->{'alias'}" if $repo->{'att'}->{'enabled'};
+	}
+	my $zypper_products = `zypper --xml --no-refresh products $repo_args`;
+	my $prodparser = new XML::Twig;
+	$prodparser->parse($zypper_products);
+	my $root = $prodparser->root;
+	my $prodlist = $root->first_child('product-list');
+	my @products = $prodlist->children('product');
+	if (scalar @products != 1) {
+	    my $num = scalar @products;
+	    print "ERROR: $service->{'att'}->{'alias'}: Wrong number of products: $num\n";
+	    print "       Result can be wrong\n";
+	    foreach my $product (@products) {
+		print "       $product->{'att'}->{'summary'}\n";
+	    }
+	}
+	foreach my $product (@products) {
+	    $product_summary = $product->{'att'}->{'summary'};
+	    $product_name = $product->{'att'}->{'name'};
+	    $product_id = "$product->{'att'}->{'name'}/$product->{'att'}->{'version'}/$product->{'att'}->{'arch'}";
+	}
+
+	my $zypper_packages = `zypper --xml --no-refresh packages -i $repo_args |grep ^i |grep -v $product_name-release |wc -l`;
+	chomp $zypper_packages;
+
+	print "$product_summary: $product_id ($zypper_packages)\n";
+    }
 }
