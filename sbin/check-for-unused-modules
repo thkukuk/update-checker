@@ -75,8 +75,10 @@ my $unused_count = 0;
 my @UsedModules;
 my @UnusedModules;
 my $zypper_output;
+my $zypper_installed_products;
 
 $zypper_output = `zypper refresh -f --services`;
+$zypper_installed_products = `zypper --no-refresh --xml products -i 2>&1`;
 $zypper_output = `zypper --no-refresh --xml services 2>&1`;
 my $Parser =
     new XML::Twig(twig_handlers=>{'stream/service-list/service' => \&GetServiceList});
@@ -108,7 +110,7 @@ sub GetServiceList
 	    $product =~ s/.*://;
 	    $product =~ s/-Pool$//;
 	    $product =~ s/-Updates$//;
-	    push  $products{$product}, $repo->{'att'}->{'alias'};
+# XXX	    push  $products{$product}, $repo->{'att'}->{'alias'};
 	    print "$product\n";
 	}
 
@@ -118,18 +120,31 @@ sub GetServiceList
 	foreach my $repo (@repos) {
 	    $repo_args = "$repo_args -r $repo->{'att'}->{'alias'}" if $repo->{'att'}->{'enabled'};
 	}
-	my $zypper_products = `zypper --xml --no-refresh products $repo_args`;
+	my $zypper_repo_products = `zypper --xml --no-refresh products $repo_args`;
 	my $prodparser = new XML::Twig;
-	$prodparser->parse($zypper_products);
+	$prodparser->parse($zypper_repo_products);
 	my $root = $prodparser->root;
 	my $prodlist = $root->first_child('product-list');
 	my @products = $prodlist->children('product');
 	if (scalar @products != 1) {
-	    my $num = scalar @products;
-	    print "ERROR: $service->{'att'}->{'alias'}: Wrong number of products: $num\n";
-	    print "       Result can be wrong\n";
+	    my $ins_prodparser = new XML::Twig;
+	    $ins_prodparser->parse($zypper_installed_products);
+	    my $root = $ins_prodparser->root;
+	    my $prodlist = $root->first_child('product-list');
+	    my @installed_products = $prodlist->children('product');
+	    my $num = 0;
+
 	    foreach my $product (@products) {
-		print "       $product->{'att'}->{'summary'}\n";
+		foreach my $ins_product (@installed_products) {
+		    if ($product->{'att'}->{'name'} eq $ins_product->{'att'}->{'name'}) {
+			$num++;
+		    }
+		}
+	    }
+	    $num = scalar @products - $num;
+	    if ($num != 1) {
+		print "ERROR: $service->{'att'}->{'alias'}: Wrong number of installed products: $num\n";
+		print "       Result can be wrong\n";
 	    }
 	}
 	foreach my $product (@products) {
