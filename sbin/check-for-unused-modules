@@ -70,22 +70,23 @@ if (-r $configfile) {
     }
 }
 
-my $used_count = 0;
-my $unused_count = 0;
-my @UsedModules;
-my @UnusedModules;
 my $zypper_output;
 my $zypper_installed_products;
+my $found = 0;
 
+print "Calling zypper refresh -f --services\n" if $verbose;
 $zypper_output = `zypper refresh -f --services`;
+print "Calling zypper --no-refresh --xml products -i\n" if $verbose;
 $zypper_installed_products = `zypper --no-refresh --xml products -i 2>&1`;
+print "Calling zypper --no-refresh --xml services\n" if $verbose;
 $zypper_output = `zypper --no-refresh --xml services 2>&1`;
 my $Parser =
     new XML::Twig(twig_handlers=>{'stream/service-list/service' => \&GetServiceList});
 $Parser->parse($zypper_output);
 
-@UsedModules = sort @UsedModules unless $used_count == 0;
-@UnusedModules = sort @UnusedModules unless $unused_count == 0;
+if ($found == 0) {
+    print "No unused Modules found\n";
+}
 
 exit;
 
@@ -110,7 +111,8 @@ sub GetServiceList
 	    $product =~ s/.*://;
 	    $product =~ s/-Pool$//;
 	    $product =~ s/-Updates$//;
-# XXX	    push  $products{$product}, $repo->{'att'}->{'alias'};
+	    $products{$product} = "$products{$product} -r $repo->{'att'}->{'alias'}"
+		if $repo->{'att'}->{'enabled'};
 	    print "$product\n";
 	}
 
@@ -120,42 +122,59 @@ sub GetServiceList
 	foreach my $repo (@repos) {
 	    $repo_args = "$repo_args -r $repo->{'att'}->{'alias'}" if $repo->{'att'}->{'enabled'};
 	}
+
+	# Now the interesting part: some repos have the same product multiple times
+	# (update of *-release package), other repos contain unknown products, which
+	# are not installed (PackageHub :( ). Take the installed products and look, if
+	# this ones are available in a repo and use only that. So we ignore not installed
+	# or duplicate products.
+	print "Calling zypper --xml --no-refresh products $repo_args\n" if $verbose;
 	my $zypper_repo_products = `zypper --xml --no-refresh products $repo_args`;
 	my $prodparser = new XML::Twig;
 	$prodparser->parse($zypper_repo_products);
 	my $root = $prodparser->root;
 	my $prodlist = $root->first_child('product-list');
-	my @products = $prodlist->children('product');
-	if (scalar @products != 1) {
-	    my $ins_prodparser = new XML::Twig;
-	    $ins_prodparser->parse($zypper_installed_products);
-	    my $root = $ins_prodparser->root;
-	    my $prodlist = $root->first_child('product-list');
-	    my @installed_products = $prodlist->children('product');
-	    my $num = 0;
+	my @repo_products = $prodlist->children('product');
 
-	    foreach my $product (@products) {
-		foreach my $ins_product (@installed_products) {
-		    if ($product->{'att'}->{'name'} eq $ins_product->{'att'}->{'name'}) {
-			$num++;
-		    }
+	my $ins_prodparser = new XML::Twig;
+	$ins_prodparser->parse($zypper_installed_products);
+	my $ins_root = $ins_prodparser->root;
+	my $ins_prodlist = $ins_root->first_child('product-list');
+	my @installed_products = $ins_prodlist->children('product');
+	my @products = ();
+
+	foreach my $ins_product (@installed_products) {
+	    foreach my $repo_product (@repo_products) {
+		if ($repo_product->{'att'}->{'name'} eq $ins_product->{'att'}->{'name'}) {
+		    push @products, $ins_product;
+		    last;
 		}
 	    }
-	    $num = scalar @products - $num;
-	    if ($num != 1) {
-		print "ERROR: $service->{'att'}->{'alias'}: Wrong number of installed products: $num\n";
-		print "       Result can be wrong\n";
-	    }
 	}
+
+	if (scalar @products != 1) {
+	    my $num = scalar @products;
+	    print "ERROR: $service->{'att'}->{'alias'}: Wrong number of installed products: $num\n";
+	    print "       Result can be wrong\n";
+	}
+
 	foreach my $product (@products) {
 	    $product_summary = $product->{'att'}->{'summary'};
 	    $product_name = $product->{'att'}->{'name'};
 	    $product_id = "$product->{'att'}->{'name'}/$product->{'att'}->{'version'}/$product->{'att'}->{'arch'}";
 	}
 
+	print "zypper --xml --no-refresh packages -i $repo_args |grep ^i |grep -v $product_name-release |wc -l\n" if $verbose;
 	my $zypper_packages = `zypper --xml --no-refresh packages -i $repo_args |grep ^i |grep -v $product_name-release |wc -l`;
 	chomp $zypper_packages;
 
-	print "$product_summary: $product_id ($zypper_packages)\n";
+	$found=1 if ($zypper_packages == 0);
+
+	if ($verbose) {
+	    print "$product_summary: $product_id ($zypper_packages)\n";
+	} elsif ($zypper_packages == 0) {
+	    print "$product_summary\n";
+	    print "    SUSEConnect -d -p $product_id\n";
+	}
     }
 }
