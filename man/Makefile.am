@@ -1,21 +1,17 @@
 #
-# Copyright (c) 2016, 2017 Thorsten Kukuk, Germany
+# Copyright (c) 2018 Thorsten Kukuk, Germany
 #
 # Author: Thorsten Kukuk <kukuk@suse.de>
 #
 
-CLEANFILES = $(MANS) $(DATA) issue-generator.index.xml
+CLEANFILES = $(MANS) $(DATA)
 
 EXTRA_DIST = $(MANS) $(XMLS) $(DATA) custom-html.xsl \
-	make-man-index.py xml_helper.py issue-generator.index.xml
+	make-man-index.py xml_helper.py update-checker.index.xml
 
-man_MANS = issue.d.5 issue-generator.8 issue-generator.service.8 \
-	issue-add-ssh-keys.service.8 90-issue-generator.rules.8 \
-	issue-generator.conf.8
-noinst_DATA = issue.d.5.html issue-generator.8.html \
-	issue-generator.service.8.html issue-add-ssh-keys.service.8.html \
-	90-issue-generator.rules.8.html issue-generator.conf.8.html
-XMLS = issue.d.5.xml issue-generator.8.xml
+man_MANS = 
+noinst_DATA =
+XMLS = update-checker.8.xml
 
 XSLTPROC_FLAGS_HTML = \
 	--nonet \

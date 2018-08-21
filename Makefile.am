@@ -1,11 +1,11 @@
 #
-# Copyright (c) 2016-2018 Thorsten Kukuk, Germany
+# Copyright (c) 2018 Thorsten Kukuk, Germany
 #
 # Author: Thorsten Kukuk <kukuk@suse.de>
 #
 AUTOMAKE_OPTIONS = 1.6 foreign check-news dist-xz
 #
-SUBDIRS = sbin man systemd logrotate dracut doc etc
+SUBDIRS = sbin systemd etc
 
 CLEANFILES = *~
 
