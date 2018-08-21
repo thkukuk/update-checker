@@ -1,0 +1,12 @@
+[Unit]
+Description=Check if there is a new migration target
+Documentation=man:update-checker(8)
+ConditionACPower=true
+Wants=network.target
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/update-checker-migration
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
