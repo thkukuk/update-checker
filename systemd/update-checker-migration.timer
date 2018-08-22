@@ -4,7 +4,7 @@ Documentation=man:update-checker-migration(8)
 After=network.target local-fs.target
 
 [Timer]
-OnCalendar="Tue 22:30"
+OnCalendar="Tue *-*-8..14,22..28 22:30"
 AccuracySec=1m
 RandomizedDelaySec=2h
 Persistent=true
