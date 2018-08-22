@@ -16,6 +16,7 @@
 
 require 'optparse'
 require 'fileutils'
+require 'tempfile'
 require "suse/connect"
 
 def release_notes_url(product, version)
@@ -32,6 +33,74 @@ def release_notes_url(product, version)
   end
   url = "https://www.suse.com/releasenotes/x86_64/#{myproduct}/#{myversion}/"
   return url
+end
+
+def update_grains(available, mirrored, newversion, url)
+  filename = "/etc/salt/grains"
+  available_found = 0;
+  mirrored_found = 0;
+  newversion_found = 0;
+  url_found = 0;
+  modified = 0;
+
+  Tempfile.open(".#{File.basename(filename)}", File.dirname(filename)) do |tempfile|
+    if File.exist?(filename)
+      File.open(filename).each do |line|
+        if line =~ /^tx_update_migration_available/
+          line = "tx_update_migration_available: #{available}\n"
+          available_found=1
+          modified = 1;
+        end
+        if line =~ /^tx_update_migration_mirror_synced/
+          line = "tx_update_migration_mirror_synced: #{mirrored}\n"
+          mirrored_found=1
+          modified = 1;
+        end
+        if line =~ /^tx_update_migration_newversion/
+          line = "tx_update_migration_newversion: \"#{newversion}\"\n"
+          newversion_found=1
+          modified = 1;
+        end
+        if line =~ /^tx_update_migration_notes/
+          line = "tx_update_migration_notes: \"#{url}\"\n"
+          notes_found=1
+          modified = 1;
+        end
+        tempfile.puts line
+      end
+    end
+    if available_found == 0
+      tempfile.puts "tx_update_migration_available: #{available}\n"
+      modified = 1;
+    end
+    if mirrored_found == 0 && available
+      tempfile.puts "tx_update_migration_mirror_synced: #{mirrored}\n"
+      modified = 1;
+    end
+    if newversion_found == 0 && available
+      tempfile.puts "tx_update_migration_newversion: \"#{newversion}\"\n"
+      modified = 1;
+    end
+    if newversion_found == 0 && available
+      tempfile.puts "tx_update_migration_notes: \"#{url}\"\n"
+      modified = 1;
+    end
+    tempfile.fdatasync
+    tempfile.close
+    if modified > 0
+      if File.exist?(filename)
+        stat = File.stat(filename)
+        FileUtils.chown stat.uid, stat.gid, tempfile.path
+        FileUtils.chmod stat.mode, tempfile.path
+      else
+        FileUtils.chown 'root', 'root', tempfile.path
+        FileUtils.chmod 0644, tempfile.path
+      end
+      FileUtils.mv tempfile.path, filename
+    else
+      File.delete("#{File.dirname(filename)}/.#{File.basename(filename)}")
+    end
+  end
 end
 
 
@@ -135,6 +204,15 @@ end
 
 output_stdout=false
 output_issue=false
+# for salt we assume, that there is at max. one migration target.
+# Else we try to find the one with the highest version number.
+output_salt=false
+tx_update_migration_available=false
+tx_update_migration_newversion=nil
+tx_update_migration_notes=nil
+tx_update_migration_mirror_synced=true
+
+
 open options[:config] do |config_file|
   config_file.each_line do |line|
     unless line.chomp.empty? || line =~ /^#/
@@ -148,6 +226,12 @@ open options[:config] do |config_file|
             output_stdout=true
           when "issue"
             output_issue=true
+          when "salt"
+            if !File.directory?("/etc/salt")
+              print "ERROR: no salt installed! Ignoring salt output.\n"
+            else
+              output_salt=true
+            end
           else
             print "ERROR: unknown output value: #{arg}\n"
           end
@@ -157,7 +241,7 @@ open options[:config] do |config_file|
   end
 end
 
-if output_stdout == false && output_issue == false
+if output_stdout == false && output_issue == false && output_salt == false
   output_stdout=true
 end
 
@@ -165,14 +249,22 @@ if migrations_unavailable.length > 0
   print "Unavailable migrations (product is not mirrored):\n\n"
   migrations_unavailable.each do |migration|
     url=""
+    product_name=""
     migration.each do |p|
       print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.available ? "" : " (not available)") + (p.already_installed ? " (already installed)" : "") + "\n       "
       if p.base
         url = release_notes_url(p.identifier, p.version)
+        product_name=p.friendly_name
       end
     end
     print "#{url}\n"
     print "\n"
+    if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
+      tx_update_migration_available=true
+      tx_update_migration_newversion=product_name
+      tx_update_migration_notes=url
+      tx_update_migration_mirror_synced=true
+    end
   end
   print "\n"
 end
@@ -184,9 +276,11 @@ if migrations.length > 0
     number+=1
     url=""
     product_list=""
+    product_name=""
     migration.each do |p|
       if p.base
         url = release_notes_url(p.identifier, p.version)
+        product_name = p.friendly_name
       end
       if output_stdout
         print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.already_installed ? " (already installed)" : "") + "\n       "
@@ -216,8 +310,25 @@ if migrations.length > 0
         print "Executing /usr/sbin/issue-generator failed!\n\n"
       end
     end
+    if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
+      tx_update_migration_available=true
+      tx_update_migration_newversion=product_name
+      tx_update_migration_notes=url
+      tx_update_migration_mirror_synced=true
+    end
   end
   print "\n" if output_stdout
+end
+
+if (output_salt && tx_update_migration_available)
+  if options[:verbose]
+    print "tx_update_migration_available: #{tx_update_migration_available}\n"
+    print "tx_update_migration_mirror_synced: #{tx_update_migration_mirror_synced}\n"
+    print "tx_update_migration_newversion: #{tx_update_migration_newversion}\n"
+    print "tx_update_migration_notes: #{tx_update_migration_notes}\n"
+  end
+  update_grains(tx_update_migration_available, tx_update_migration_mirror_synced, tx_update_migration_newversion,
+                tx_update_migration_notes)
 end
 
 exit 0
