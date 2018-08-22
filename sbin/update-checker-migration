@@ -208,9 +208,9 @@ output_issue=false
 # Else we try to find the one with the highest version number.
 output_salt=false
 tx_update_migration_available=false
+tx_update_migration_mirror_synced=true
 tx_update_migration_newversion=nil
 tx_update_migration_notes=nil
-tx_update_migration_mirror_synced=true
 
 
 open options[:config] do |config_file|
@@ -261,9 +261,9 @@ if migrations_unavailable.length > 0
     print "\n"
     if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
       tx_update_migration_available=true
+      tx_update_migration_mirror_synced=false
       tx_update_migration_newversion=product_name
       tx_update_migration_notes=url
-      tx_update_migration_mirror_synced=true
     end
   end
   print "\n"
@@ -312,9 +312,9 @@ if migrations.length > 0
     end
     if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
       tx_update_migration_available=true
+      tx_update_migration_mirror_synced=true
       tx_update_migration_newversion=product_name
       tx_update_migration_notes=url
-      tx_update_migration_mirror_synced=true
     end
   end
   print "\n" if output_stdout
