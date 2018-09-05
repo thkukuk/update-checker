@@ -48,7 +48,6 @@ update-checker.index.xml: make-man-index.py $(XMLS)
 update-checker.index.html: update-checker.index.xml custom-html.xsl
 	$(XSLTPROC) -o $(srcdir)/$@ --path $(srcdir) $(XSLTPROC_FLAGS_HTML) $<
 
-
 update-checker.conf.5: update-checker.conf.5.xml custom-man.xsl
 	$(XSLTPROC) -o $(srcdir)/$@ --path $(srcdir) --xinclude --nonet http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl $<
 
@@ -57,6 +56,10 @@ update-checker.conf.5.html: update-checker.conf.5.xml custom-html.xsl
 
 update-checker-migration.8: update-checker-migration.8.xml
 	$(XSLTPROC) -o $(srcdir)/$@ --path $(srcdir) --xinclude --nonet http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl $<
+
+update-checker-migration.service.8: update-checker-migration.8
+
+update-checker-migration.timer.8: update-checker-migration.8
 
 update-checker-migration.8.html: update-checker-migration.8.xml custom-html.xsl
 	$(XSLTPROC) -o $(srcdir)/$@ --path $(srcdir) $(XSLTPROC_FLAGS_HTML) $<
