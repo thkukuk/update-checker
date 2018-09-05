@@ -106,6 +106,7 @@ end
 
 options = {
   :config => "/etc/update-checker.conf",
+  :output => nil,
   :verbose => false,
   :root => nil
 }
@@ -121,6 +122,10 @@ OptionParser.new do |opts|
     options[:config] = f
   end
 
+  opts.on("-o", "--output string", "Specify backend for output") do |o|
+    options[:output] = o
+  end
+
   opts.on("-v", "--[no-]verbose", "Increase verbosity") do |v|
     options[:verbose] = v
   end
@@ -132,12 +137,17 @@ OptionParser.new do |opts|
 
 end.parse!
 
+if !File.file?((options[:root] ? "#{options[:root]}" : "") + "/etc/zypp/credentials.d/SCCcredentials")
+  print "System not registered\n"
+  exit 0
+end
+
 # Check if we have migration targets
 begin
   system_products = SUSE::Connect::Migration::system_products
 
   if system_products.length == 0
-    print "No products found\n"
+    $stderr.puts "No products found\n"
     exit 1
   end
 
@@ -149,7 +159,7 @@ begin
     print "\n"
   end
 rescue => e
-  print "Can't determine the list of installed products: #{e.class}: #{e.message}\n"
+  $stderr.puts "Can't determine the list of installed products: #{e.class}: #{e.message}\n"
   exit 1
 end
 
@@ -157,7 +167,7 @@ end
 begin
   migrations_all = SUSE::Connect::YaST.system_migrations system_products
 rescue => e
-  print "Can't get available migrations from server: #{e.class}: #{e.message}\n"
+  $stderr.puts "Can't get available migrations from server: #{e.class}: #{e.message}\n"
   exit 1
 end
 
@@ -176,7 +186,7 @@ if options[:to_product]
     )
     migrations_all = SUSE::Connect::YaST.system_offline_migrations(system_products, new_product)
   rescue => e
-    print "Can't get available migrations from server: #{e.class}: #{e.message}\n"
+    $stderr.puts "Can't get available migrations from server: #{e.class}: #{e.message}\n"
     exit 1
   end
 end
@@ -212,32 +222,56 @@ tx_update_migration_mirror_synced=true
 tx_update_migration_newversion=nil
 tx_update_migration_notes=nil
 
-
-open options[:config] do |config_file|
-  config_file.each_line do |line|
-    unless line.chomp.empty? || line =~ /^#/
-      option, argument = line.split("=", 2)
-      option=option.delete(" \t\r\n")
-      if option == "output"
-        argument=argument.delete(" \t\r\n")
-        argument.split(',').each do |arg|
-          case arg
-          when "stdout"
-            output_stdout=true
-          when "issue"
-            output_issue=true
-          when "salt"
-            if !File.directory?("/etc/salt")
-              print "ERROR: no salt installed! Ignoring salt output.\n"
-            else
-              output_salt=true
+if options[:output]
+  # don't read output from config file, use specified one
+  argument=options[:output].delete(" \t\r\n")
+  argument.split(',').each do |arg|
+    case arg
+    when "stdout"
+      output_stdout=true
+    when "issue"
+      output_issue=true
+    when "salt"
+      if !File.directory?("/etc/salt")
+        $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+      else
+        output_salt=true
+      end
+    else
+      $stderr.puts "ERROR: unknown output value: #{arg}\n"
+    end
+  end
+else
+  begin
+    open options[:config] do |config_file|
+      config_file.each_line do |line|
+        unless line.chomp.empty? || line =~ /^#/
+          option, argument = line.split("=", 2)
+          option=option.delete(" \t\r\n")
+          if option == "output"
+            argument=argument.delete(" \t\r\n")
+            argument.split(',').each do |arg|
+              case arg
+              when "stdout"
+                output_stdout=true
+              when "issue"
+                output_issue=true
+              when "salt"
+                if !File.directory?("/etc/salt")
+                  $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+                else
+                  output_salt=true
+                end
+              else
+                $stderr.puts "ERROR: unknown output value: #{arg}\n"
+              end
             end
-          else
-            print "ERROR: unknown output value: #{arg}\n"
           end
         end
       end
     end
+  rescue => e
+    $stderr.puts "Caught the exception: #{e}"
   end
 end
 
@@ -246,19 +280,18 @@ if output_stdout == false && output_issue == false && output_salt == false
 end
 
 if migrations_unavailable.length > 0
-  print "Unavailable migrations (product is not mirrored):\n\n"
+  print "Unavailable migrations (product is not mirrored):\n\n" if options[:verbose];
   migrations_unavailable.each do |migration|
     url=""
     product_name=""
     migration.each do |p|
-      print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.available ? "" : " (not available)") + (p.already_installed ? " (already installed)" : "") + "\n       "
+      print " #{p.identifier}/#{p.version}/#{p.arch}" + (p.available ? "" : " (not available)") + (p.already_installed ? " (already installed)" : "") + "\n       " if options[:verbose]
       if p.base
         url = release_notes_url(p.identifier, p.version)
         product_name=p.friendly_name
       end
     end
-    print "#{url}\n"
-    print "\n"
+    print "#{url}\n\n" if options[:verbose]
     if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
       tx_update_migration_available=true
       tx_update_migration_mirror_synced=false
@@ -266,7 +299,7 @@ if migrations_unavailable.length > 0
       tx_update_migration_notes=url
     end
   end
-  print "\n"
+  print "\n" if options[:verbose]
 end
 
 if migrations.length > 0
@@ -297,17 +330,17 @@ if migrations.length > 0
       begin
         file = File.open("/var/run/issue.d/82-migration", "w")
       rescue IOError => e
-        print "ERROR: creating of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
+        $stderr.puts "ERROR: creating of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
       end
       begin
         file.write("New version available:#{product_list}\nRelease Notes: #{url}\n\n")
       rescue IOError => e
-        print "ERROR: writing of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
+        $stderr.puts "ERROR: writing of /var/run/issue.d/82-migration failed: #{e.class}: #{e.message}\n"
       ensure
         file.close unless file.nil?
       end
       if ! system "/usr/sbin/issue-generator"
-        print "Executing /usr/sbin/issue-generator failed!\n\n"
+        $stderr.puts "Executing /usr/sbin/issue-generator failed!\n\n"
       end
     end
     if output_salt && (tx_update_migration_available == false || (product_name <=> tx_update_migration_newversion) > 0)
