@@ -19,7 +19,9 @@
   along with systemd; If not, see <http://www.gnu.org/licenses/>.
 -->
 
-<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  xmlns:ss="http://docbook.sf.net/xmlns/string.subst/1.0"
+  xmlns:exsl="http://exslt.org/common" version="1.0">
 
 <xsl:import href="http://docbook.sourceforge.net/release/xsl/current/html/docbook.xsl"/>
 <!--
@@ -32,6 +34,8 @@
   - for this stylesheet contains its own custom ID logic (for generating permalinks) already.
  -->
 <xsl:param name="generate.consistent.ids" select="1"/>
+<xsl:param name="sysconfdir"/>
+<xsl:param name="prefix"/>
 
 <!-- translate man page references to links to html pages -->
 <xsl:template match="citerefentry[not(@project)]">
@@ -46,7 +50,7 @@
   </a>
 </xsl:template>
 
-<xsl:template match="citerefentry[@project='man-pages'] | citerefentry[manvolnum='2'] | citerefentry[manvolnum='4']">
+<xsl:template match="citerefentry[@project='man-pages']">
   <a>
     <xsl:attribute name="href">
       <xsl:text>http://man7.org/linux/man-pages/man</xsl:text>
@@ -55,6 +59,19 @@
       <xsl:value-of select="refentrytitle"/>
       <xsl:text>.</xsl:text>
       <xsl:value-of select="manvolnum"/>
+      <xsl:text>.html</xsl:text>
+    </xsl:attribute>
+    <xsl:call-template name="inline.charseq"/>
+  </a>
+</xsl:template>
+
+<xsl:template match="citerefentry[@project='linux.org']">
+  <a>
+    <xsl:attribute name="href">
+      <xsl:text>https://www.linux.org/docs/man</xsl:text>
+      <xsl:value-of select="manvolnum"/>
+      <xsl:text>/</xsl:text>
+      <xsl:value-of select="refentrytitle"/>
       <xsl:text>.html</xsl:text>
     </xsl:attribute>
     <xsl:call-template name="inline.charseq"/>
@@ -71,6 +88,29 @@
     <xsl:call-template name="inline.charseq"/>
   </a>
 </xsl:template>
+
+<xsl:template match="citerefentry[@project='snapper']">
+  <a>
+    <xsl:attribute name="href">
+      <xsl:text>http://snapper.io/manpages/</xsl:text>
+      <xsl:value-of select="refentrytitle"/>
+      <xsl:text>.html</xsl:text>
+    </xsl:attribute>
+    <xsl:call-template name="inline.charseq"/>
+  </a>
+</xsl:template>
+
+<xsl:template match="citerefentry[@project='issue-generator']">
+  <a>
+    <xsl:attribute name="literal">
+      <xsl:text></xsl:text>
+      <xsl:value-of select="refentrytitle"/>
+      <xsl:text></xsl:text>
+    </xsl:attribute>
+    <xsl:call-template name="inline.charseq"/>
+  </a>
+</xsl:template>
+
 
 <!--
   - helper template to do conflict resolution between various headings with the same inferred ID attribute/tag from the headerlink template
@@ -217,14 +257,16 @@
 
   <a>
     <xsl:attribute name="href">
-      <xsl:text>issue-generator.index.html</xsl:text>
+      <xsl:value-of select="$package.name"/>
+      <xsl:text>.index.html</xsl:text>
     </xsl:attribute>
     <xsl:text>Index </xsl:text>
   </a>
 
   <span style="float:right">
-    <xsl:text>issue-generator </xsl:text>
-    <xsl:value-of select="$issue-generator.version"/>
+    <xsl:value-of select="$package.name"/>
+    <xsl:text> </xsl:text>
+    <xsl:value-of select="$package.version"/>
   </span>
   <hr/>
 </xsl:template>
@@ -233,6 +275,17 @@
   <xsl:text>"</xsl:text>
   <xsl:call-template name="inline.monoseq"/>
   <xsl:text>"</xsl:text>
+</xsl:template>
+
+<xsl:template match="filename">
+  <xsl:variable name="replacements">
+    <ss:substitution oldstring="%sysconfdir%" newstring="{$sysconfdir}" />
+    <ss:substitution oldstring="%prefix%" newstring="{$prefix}" />
+  </xsl:variable>
+  <xsl:call-template name="apply-string-subst-map">
+    <xsl:with-param name="content" select="."/>
+    <xsl:with-param name="map.contents" select="exsl:node-set($replacements)/*" />
+  </xsl:call-template>
 </xsl:template>
 
 <!-- Switch things to UTF-8, ISO-8859-1 is soo yesteryear -->

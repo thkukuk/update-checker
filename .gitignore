@@ -26,3 +26,7 @@ config.status
 test-driver
 test-suite.log
 check-output.*
+update-checker*.8
+update-checker*.5
+update-checker.index.xml
+*.html
