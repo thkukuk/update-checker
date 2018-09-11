@@ -20,7 +20,7 @@ update-checker - check for new updates
 
 =head1 SYNOPSIS
 
-update-checker [variant]
+update-checker [option]
 
 =head1 DESCRIPTION
 
@@ -29,14 +29,15 @@ or other tools via this depending on configured paths.
 
 =head1 OPTIONS
 
-  -c|--config <file>  Use different configuration file
-  -v|--verbose         More verbose output
-  --up                     Check for available updates via "zypper up", default
-  --patches              Check for available patches via "zypper patch"
-  --dup                    Check for distribution updates via "zypper dup"
-  --usage                Print usage
-  --man                  Display manual page
-  -h|-?                    Help
+  -c|--config <file>    Use different configuration file
+  -v|--verbose          More verbose output
+  -o|--output <string>  Specify a backend for the output.
+  --up                  Check for available updates via "zypper up", default
+  --patches             Check for available patches via "zypper patch"
+  --dup                 Check for distribution updates via "zypper dup"
+  --usage               Print usage
+  --man                 Display manual page
+  -h|-?                 Help
 
 =cut
 
@@ -55,12 +56,19 @@ my $man = 0;
 my $usage = 0;
 my $configfile = '/etc/update-checker.conf';
 my $verbose = 0;
-my $output = "stdout";
+my $output_ = "";
+my $output_cfg = "";
+my $output_arg = "";
+my $output_stdout = 0;
+my $output_issue = 0;
+my $output_salt = 0;
 my $variant = "update";
-my $orphaned = 1;
+my $orphaned = 0;
 
 GetOptions('c|config=s' => \$configfile,
 	   'v|verbose' => \$verbose,
+	   'o|output' => \$output_arg,
+	   'orphaned' => \$orphaned,
            'man' => \$man,
            'usage' => \$usage,
            'help|h|?' => \$help) or pod2usage(2);
@@ -70,9 +78,29 @@ pod2usage(-exitstatus => 0, -verbose => 0) if $usage;
 
 my $cfg = new Config::IniFiles(-file => $configfile);
 if (defined $cfg) {
-    $output = $cfg->val("global", "output", "stdout");
+    $output_cfg = $cfg->val("global", "output", "stdout");
     $variant = $cfg->val("update", "variant", "update");
-    $orphaned = $cfg->val("update", "orphaned", 1);
+    $orphaned = $cfg->val("update", "orphaned", 0);
+}
+
+if ($output_arg ne "") {
+    $output_ = $output_arg;
+} elsif ($output_cfg ne "") {
+    $output_ = $output_cfg;
+} else {
+    $output_ = "stdout"
+}
+
+$output_ =~ s/\s+//g;
+my @output_parts = split /,/, $output_;
+foreach (@output_parts) {
+    $output_stdout = 1 if ($_ eq "stdout");
+    $output_issue = 1 if ($_ eq "issue");
+    $output_salt = 1 if ($_ eq "salt");
+}
+
+if (($output_stdout + $output_issue + $output_salt) == 0) {
+    $output_stdout = 1;
 }
 
 my $package_count = 0;
@@ -87,12 +115,13 @@ my @dup_update;
 my @dup_remove;
 my $zypper_output;
 
+`zypper refresh -f --services 2>&1`;
 if ($variant eq "update") {
-    $zypper_output = `zypper --xml list-updates 2>&1`;
+    $zypper_output = `zypper --no-refresh --xml list-updates 2>&1`;
 } elsif ($variant eq "patch") {
-    $zypper_output = `zypper --xml list-patches 2>&1`;
+    $zypper_output = `zypper--no-refresh --xml list-patches 2>&1`;
 } elsif ($variant eq "dup") {
-    $zypper_output = `zypper --xml --non-interactive dup --dry-run 2>&1`;
+    $zypper_output = `zypper ---no-refresh -xml --non-interactive dup --dry-run 2>&1`;
 } else {
     warn "ERROR: unknown variant \"$variant\"\n";
     exit 1;
@@ -112,9 +141,9 @@ $Parser->parse($zypper_output);
 @dup_remove = sort @dup_remove unless $dup_remove_count == 0;
 
 if ($orphaned == 1) {
-    $zypper_output = `zypper --xml pa --orphaned  2>&1`;
+    $zypper_output = `zypper --no-refresh --xml pa --orphaned  2>&1`;
     $Parser =
-	new XML::Twig(twig_handlers=>{'stream/update-status/update-list/update' => \&GetOrphanedList});
+	new XML::Twig(twig_handlers=>{'stream/XXX' => \&GetOrphanedList});
 		      $Parser->parse($zypper_output);
 }
 
@@ -138,6 +167,21 @@ if ($patch_count > 0) {
 
 if ($dup_install_count > 0 || $dup_update_count > 0 || $dup_remove_count > 0) {
     print "Distribution update: $dup_install_count to install, $dup_update_count to update, $dup_remove_count to remove\n";
+    print "List of packages to install: ";
+    foreach (@dup_install) {
+	print "$_ ";
+    }
+    print "\n";
+    print "List of packages to update: ";
+    foreach (@dup_update) {
+	print "$_ ";
+    }
+    print "\n";
+    print "List of packages to remove: ";
+    foreach (@dup_remove) {
+	print "$_ ";
+    }
+    print "\n";
 }
 
 exit;
