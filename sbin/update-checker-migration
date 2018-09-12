@@ -81,7 +81,7 @@ def update_grains(available, mirrored, newversion, url)
       tempfile.puts "tx_update_migration_newversion: \"#{newversion}\"\n"
       modified = 1;
     end
-    if newversion_found == 0 && available
+    if notes_found == 0 && available
       tempfile.puts "tx_update_migration_notes: \"#{url}\"\n"
       modified = 1;
     end
