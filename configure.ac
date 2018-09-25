@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT(update-checker, 0.1)
+AC_INIT(update-checker, 1.0)
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([sbin/update-checker])
 AC_PREFIX_DEFAULT(/usr)
