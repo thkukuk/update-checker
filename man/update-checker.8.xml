@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.4//EN"
+"http://www.oasis-open.org/docbook/xml/4.4/docbookx.dtd">
+
+<!--  \-*\- nroff \-*\- -->
+<!--  Copyright 2018 Thorsten Kukuk &lt;kukuk@suse.de&gt; -->
+
+<!--  This program is free software; you can redistribute it and/or -->
+<!--  modify it under the terms of the GNU General Public License as -->
+<!--  published by the Free Software Foundation; either version 2 of the -->
+<!--  License, or (at your option) any later version. -->
+
+<!--  This program is distributed in the hope that it will be useful, -->
+<!--  but WITHOUT ANY WARRANTY; without even the implied warranty of -->
+<!--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU -->
+<!--  General Public License for more details. -->
+
+<!--  You should have received a copy of the GNU General Public License -->
+<!--  along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;. -->
+
+<refentry id='update-checker.8'>
+  <refentryinfo>
+    <title>update-checker</title>
+    <productname>update-checker</productname>
+
+    <authorgroup>
+      <author>
+        <contrib></contrib>
+        <firstname>Thorsten</firstname>
+        <surname>Kukuk</surname>
+        <email>kukuk@suse.com</email>
+      </author>
+    </authorgroup>
+  </refentryinfo>
+
+  <refmeta>
+    <refentrytitle>update-checker</refentrytitle>
+    <manvolnum>8</manvolnum>
+    <refmiscinfo class='setdesc'>update-checker</refmiscinfo>
+  </refmeta>
+
+  <refnamediv id='name'>
+    <refname>update-checker</refname>
+    <refname>update-checker.service</refname>
+    <refname>update-checker.timer</refname>
+    <refpurpose>Check if there are updates available for the installed products.</refpurpose>
+  </refnamediv>
+
+<!-- body begins here -->
+  <refsynopsisdiv id='synopsis'>
+    <cmdsynopsis>
+      <command>update-checker</command>
+      <arg choice='opt' rep='repeat'><replaceable>options</replaceable></arg>
+    </cmdsynopsis>
+    <para><filename>update-checker.service</filename></para>
+    <para><filename>update-checker.timer</filename></para>
+  </refsynopsisdiv>
+
+  <refsect1 id='description'><title>DESCRIPTION</title>
+  <para><command>update-checker</command> checks if there are new
+  versions of the installed products available. The check is triggered daily by
+  <citerefentry project='systemd'><refentrytitle>systemd.timer</refentrytitle><manvolnum>5</manvolnum></citerefentry>.
+  </para>
+  <para>
+  </para>
+  </refsect1>
+
+  <refsect1 id='options'><title>OPTIONS</title>
+  <variablelist>
+    <varlistentry>
+      <term><option>--config, -c</option> <replaceable>FILE</replaceable></term>
+      <listitem>
+      <para>Specify an alternate config file.</para>
+    </listitem>
+  </varlistentry>
+    <varlistentry>
+      <term><option>--output, -o</option> <replaceable>string</replaceable></term>
+      <listitem>
+      <para>Specify a backend for the output. If this option is set, the
+      <replaceable>output</replaceable> option in the configuration file is
+      ignored. Valid options are <option>stdout</option>,
+      <option>issue</option> and <option>salt</option>. <option>stdout</option>
+      writes the result to stdout. <option>issue</option> writes the result to
+      <filename>/etc/issue</filename> via
+      <citerefentry project='issue-generator'><refentrytitle>issue-generator</refentrytitle><manvolnum>8</manvolnum></citerefentry>. The
+      <option>salt</option> option is for SUSE CaaS Plattform only.</para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><option>--update</option></term>
+    <listitem>
+      <para>Check for available updates via <command>zypper up</command></para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><option>--patch</option></term>
+    <listitem>
+      <para>Check for available patches via <command>zypper patch</command></para>
+    </listitem>
+  </varlistentry>
+    <varlistentry>
+    <term><option>--dup</option></term>
+    <listitem>
+      <para>Check distribution updates via <command>zypper dup</command></para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><option>--verbose, -v</option></term>
+    <listitem>
+      <para>Increase verbosity.</para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><option>--help, -h</option></term>
+    <listitem>
+      <para>Display help and exit</para>
+    </listitem>
+  </varlistentry>
+</variablelist>
+</refsect1>
+
+<refsect1 id='see_also'><title>SEE ALSO</title>
+<para><citerefentry><refentrytitle>update-checker.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
+<citerefentry project='systemd'><refentrytitle>systemd.timer</refentrytitle><manvolnum>5</manvolnum></citerefentry>,
+<citerefentry project='systemd'><refentrytitle>systemd.time</refentrytitle><manvolnum>7</manvolnum></citerefentry>,
+<citerefentry project=''><refentrytitle>zypper</refentrytitle><manvolnum>8</manvolnum></citerefentry></para>
+</refsect1>
+</refentry>
