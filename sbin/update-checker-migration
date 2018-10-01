@@ -40,7 +40,7 @@ def update_grains(available, mirrored, newversion, url)
   available_found = 0;
   mirrored_found = 0;
   newversion_found = 0;
-  url_found = 0;
+  notes_found = 0;
   modified = 0;
 
   Tempfile.open(".#{File.basename(filename)}", File.dirname(filename)) do |tempfile|
