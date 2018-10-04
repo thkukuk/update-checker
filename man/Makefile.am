@@ -48,7 +48,7 @@ define html-alias
 endef
 
 update-checker.index.xml: make-man-index.py $(XMLS)
-	python $(srcdir)/make-man-index.py $(srcdir)/$@ $(XMLS)
+	python3 $(srcdir)/make-man-index.py $(srcdir)/$@ $(XMLS)
 
 update-checker.index.html: update-checker.index.xml custom-html.xsl
 	$(XSLTPROC) -o $(srcdir)/$@ --path $(srcdir) $(XSLTPROC_FLAGS_HTML) $<
