@@ -46,6 +46,10 @@ use warnings;
 use Pod::Usage;
 use XML::Twig;
 use Config::IniFiles;
+use POSIX qw(locale_h);
+use locale;
+
+setlocale(LC_ALL, "C");
 
 #
 # process command line arguments
