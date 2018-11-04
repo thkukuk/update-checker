@@ -35,6 +35,8 @@ or other tools via this depending on configured paths.
   --update              Check for available updates via "zypper up", default
   --patch               Check for available patches via "zypper patch"
   --dup                 Check for distribution updates via "zypper dup"
+  --profile <string>    Use entry from a different profile from the configuration file.
+  --verbose            Print additional informations.
   --usage               Print usage
   --man                 Display manual page
   -h|-?                 Help
@@ -68,6 +70,7 @@ my $output_issue = 0;
 my $output_salt = 0;
 my $variant = "";
 my $orphaned = 0;
+my $profile = "";
 
 GetOptions('c|config=s' => \$configfile,
 	   'v|verbose' => \$verbose,
@@ -78,6 +81,8 @@ GetOptions('c|config=s' => \$configfile,
 	   'dup' => sub { $variant = "dup" },
 	   'patch' => sub { $variant = "patch" },
 	   'patches' => sub { $variant = "patch" },
+	   'profile' => \$profile,
+	   'verbose' => \$verbose,
            'man' => \$man,
            'usage' => \$usage,
            'help|h|?' => \$help) or pod2usage(2);
@@ -87,9 +92,14 @@ pod2usage(-exitstatus => 0, -verbose => 0) if $usage;
 
 my $cfg = new Config::IniFiles(-file => $configfile);
 if (defined $cfg) {
-    $output_cfg = $cfg->val("global", "output", "stdout");
+    $profile = "global-$profile" if ( $profile ne "");
+    $output_cfg = $cfg->val($profile, "output", "");
+    $output_cfg = $cfg->val("global", "output", "stdout") if ($output_cfg eq "");
     $variant = $cfg->val("update", "variant", "update") if ($variant eq "");
+    $variant = "update" if ($variant eq "up");
     $orphaned = $cfg->val("update", "orphaned", 0);
+    $orphaned = 0 if ($orphaned eq "false");
+    $orphaned = 1 if ($orphaned eq "true");
 }
 
 $variant = "update" if ($variant eq "");
@@ -126,18 +136,21 @@ my @dup_update;
 my @dup_remove;
 my $zypper_output;
 
+print "Refreshing services and repositories\n" if $verbose;
 `zypper refresh -f --services 2>&1`;
+print "Read list of pending updates\n" if $verbose;
 if ($variant eq "update") {
     $zypper_output = `zypper --no-refresh --xml list-updates 2>&1`;
 } elsif ($variant eq "patch" || $variant eq "patches") {
     $zypper_output = `zypper --no-refresh --xml list-patches 2>&1`;
 } elsif ($variant eq "dup") {
-    $zypper_output = `zypper ---no-refresh -xml --non-interactive dup --dry-run 2>&1`;
+    $zypper_output = `zypper --no-refresh --xml --non-interactive dup --dry-run 2>&1`;
 } else {
     warn "ERROR: unknown variant \"$variant\"\n";
     exit 1;
 }
 
+print "Parse zypper output\n" if $verbose;
 my $Parser =
     new XML::Twig(twig_handlers=>{'stream/update-status/update-list/update' => \&GetUpdateList,
 				      'stream/update-status/blocked-update-list/update' => \&GetUpdateList,
@@ -153,6 +166,7 @@ $Parser->parse($zypper_output);
 @dup_remove = sort @dup_remove unless $dup_remove_count == 0;
 
 if ($orphaned == 1) {
+    print "Search for orphaned packages\n" if $verbose;
     $zypper_output = `zypper --no-refresh --xml pa --orphaned  2>&1`;
     $Parser =
 	new XML::Twig(twig_handlers=>{'stream/XXX' => \&GetOrphanedList});
@@ -167,27 +181,33 @@ if ($package_count > 0) {
 
 if ($patch_count > 0) {
     print_stdout ("patches", $patch_count, @patches) if ($output_stdout);
-    create_issue ("patches", $patch_count, @patches) if ($output_stdout);
-    update_grains ("patches", $patch_count, @patches) if ($output_stdout);
+    create_issue ("patches", $patch_count, @patches) if ($output_issue);
+    update_grains ("patches", $patch_count, @patches) if ($output_salt);
 }
 
 if ($dup_install_count > 0 || $dup_update_count > 0 || $dup_remove_count > 0) {
     print "Distribution update: $dup_install_count to install, $dup_update_count to update, $dup_remove_count to remove\n";
-    print "List of packages to install: ";
-    foreach (@dup_install) {
-	print "$_ ";
+    if ($dup_install_count > 0) {
+	print "List of packages to install: ";
+	foreach (@dup_install) {
+	    print "$_ ";
+	}
+	print "\n";
     }
-    print "\n";
-    print "List of packages to update: ";
-    foreach (@dup_update) {
-	print "$_ ";
+    if ($dup_update_count > 0) {
+	print "List of packages to update: ";
+	foreach (@dup_update) {
+	    print "$_ ";
+	}
+	print "\n";
     }
-    print "\n";
-    print "List of packages to remove: ";
-    foreach (@dup_remove) {
-	print "$_ ";
+    if ($dup_remove_count) {
+	print "List of packages to remove: ";
+	foreach (@dup_remove) {
+	    print "$_ ";
+	}
+	print "\n";
     }
-    print "\n";
 }
 
 exit;
@@ -197,11 +217,13 @@ sub print_stdout
     my ($type, $count, @packages) = @_;
 
     print "Pending $type: $count\n";
-    print "List of $type: ";
-    foreach (@packages) {
-	print "$_ ";
+    if ($count > 0) {
+	print "List of $type: ";
+	foreach (@packages) {
+	    print "$_ ";
+	}
+	print "\n";
     }
-    print "\n";
 }
 
 
@@ -209,10 +231,13 @@ sub create_issue
 {
     my ($type, $count, @packages) = @_;
 
-    open (my $fh, '>', "/var/run/issue.d/83-$type");
-    print $fh "Pending $type: $count\n";
-    close $fh;
-    `/usr/sbin/issue-generator`;
+    if (open (my $fh, '>', "/var/run/issue.d/83-$type")) {
+	print $fh "Pending $type: $count\n";
+	close $fh;
+	`/usr/sbin/issue-generator`;
+    } else {
+	warn "Could not open file '/var/run/issue.d/83-$type'. $!";
+    }
 }
 
 sub update_grains
