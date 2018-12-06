@@ -18,6 +18,7 @@ require 'optparse'
 require 'fileutils'
 require 'tempfile'
 require "suse/connect"
+require "inifile"
 
 def release_notes_url(product, version)
   myproduct = product
@@ -106,6 +107,7 @@ end
 
 options = {
   :config => "/etc/update-checker.conf",
+  :profile => nil,
   :output => nil,
   :verbose => false,
   :root => nil
@@ -243,35 +245,26 @@ if options[:output]
   end
 else
   begin
-    open options[:config] do |config_file|
-      config_file.each_line do |line|
-        unless line.chomp.empty? || line =~ /^#/
-          option, argument = line.split("=", 2)
-          option=option.delete(" \t\r\n")
-          if option == "output"
-            argument=argument.delete(" \t\r\n")
-            argument.split(',').each do |arg|
-              case arg
-              when "stdout"
-                output_stdout=true
-              when "issue"
-                output_issue=true
-              when "salt"
-                if !File.directory?("/etc/salt")
-                  $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
-                else
-                  output_salt=true
-                end
-              else
-                $stderr.puts "ERROR: unknown output value: #{arg}\n"
-              end
-            end
-          end
+    config_file = IniFile.load(options[:config])
+    data = file["global"]
+    option = data["output"]
+    argument=argument.delete(" \t\r\n")
+    argument.split(',').each do |arg|
+      case arg
+      when "stdout"
+        output_stdout=true
+      when "issue"
+        output_issue=true
+      when "salt"
+        if !File.directory?("/etc/salt")
+          $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+        else
+          output_salt=true
         end
+      else
+        $stderr.puts "ERROR: unknown output value: #{arg}\n"
       end
     end
-  rescue => e
-    $stderr.puts "Caught the exception: #{e}"
   end
 end
 
