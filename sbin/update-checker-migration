@@ -128,6 +128,10 @@ OptionParser.new do |opts|
     options[:output] = o
   end
 
+  opts.on("-p", "--profile string", "Use entry from different profile from the configuration file") do |p|
+    options[:profile] = p
+  end
+
   opts.on("-v", "--[no-]verbose", "Increase verbosity") do |v|
     options[:verbose] = v
   end
@@ -138,6 +142,76 @@ OptionParser.new do |opts|
   end
 
 end.parse!
+
+# Set output variable
+output_stdout=false
+output_issue=false
+# for salt we assume, that there is at max. one migration target.
+# Else we try to find the one with the highest version number.
+output_salt=false
+tx_update_migration_available=false
+tx_update_migration_mirror_synced=true
+tx_update_migration_newversion=nil
+tx_update_migration_notes=nil
+
+# Read config file if necessary
+if options[:output]
+  # don't read output from config file, use specified one
+  argument=options[:output].delete(" \t\r\n")
+  argument.split(',').each do |arg|
+    case arg
+    when "stdout"
+      output_stdout=true
+    when "issue"
+      output_issue=true
+    when "salt"
+      if !File.directory?("/etc/salt")
+        $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+      else
+        output_salt=true
+      end
+    else
+      $stderr.puts "ERROR: unknown output value: #{arg}\n"
+    end
+  end
+else
+  begin
+    # read output variable from config file
+    config_file = IniFile.load(options[:config])
+    if config_file
+      if options[:profile]
+        profile="global-#{options[:profile]}"
+      else
+        profile="global"
+      end
+      data = config_file[profile]
+      argument = data["output"]
+      print "argument=#{argument}\n"
+      argument = argument.delete(" \t\r\n")
+      argument.split(',').each do |arg|
+        case arg
+        when "stdout"
+          output_stdout=true
+        when "issue"
+          output_issue=true
+        when "salt"
+          if !File.directory?("/etc/salt")
+            $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+          else
+            output_salt=true
+          end
+        else
+          $stderr.puts "ERROR: unknown output value: #{arg}\n"
+        end
+      end
+    end
+  end
+end
+
+if output_stdout == false && output_issue == false && output_salt == false
+  output_stdout=true
+end
+
 
 if !File.file?((options[:root] ? "#{options[:root]}" : "") + "/etc/zypp/credentials.d/SCCcredentials")
   print "System not registered\n"
@@ -212,64 +286,6 @@ migrations_all.each do |migration|
   else
     migrations_unavailable << migration
   end
-end
-
-output_stdout=false
-output_issue=false
-# for salt we assume, that there is at max. one migration target.
-# Else we try to find the one with the highest version number.
-output_salt=false
-tx_update_migration_available=false
-tx_update_migration_mirror_synced=true
-tx_update_migration_newversion=nil
-tx_update_migration_notes=nil
-
-if options[:output]
-  # don't read output from config file, use specified one
-  argument=options[:output].delete(" \t\r\n")
-  argument.split(',').each do |arg|
-    case arg
-    when "stdout"
-      output_stdout=true
-    when "issue"
-      output_issue=true
-    when "salt"
-      if !File.directory?("/etc/salt")
-        $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
-      else
-        output_salt=true
-      end
-    else
-      $stderr.puts "ERROR: unknown output value: #{arg}\n"
-    end
-  end
-else
-  begin
-    config_file = IniFile.load(options[:config])
-    data = file["global"]
-    option = data["output"]
-    argument=argument.delete(" \t\r\n")
-    argument.split(',').each do |arg|
-      case arg
-      when "stdout"
-        output_stdout=true
-      when "issue"
-        output_issue=true
-      when "salt"
-        if !File.directory?("/etc/salt")
-          $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
-        else
-          output_salt=true
-        end
-      else
-        $stderr.puts "ERROR: unknown output value: #{arg}\n"
-      end
-    end
-  end
-end
-
-if output_stdout == false && output_issue == false && output_salt == false
-  output_stdout=true
 end
 
 if migrations_unavailable.length > 0
