@@ -89,6 +89,16 @@
       <option>salt</option> option is for SUSE CaaS Plattform only.</para>
     </listitem>
   </varlistentry>
+    <varlistentry>
+      <term><option>--profile, -p</option> <replaceable>string</replaceable></term>
+      <listitem>
+	<para>
+	  When reading the configuration file, the section
+	  <option>[global-<replaceable>string</replaceable>]</option> is
+	  preferred over the section <option>[global]</option>.
+	</para>
+      </listitem>
+    </varlistentry>
   <varlistentry>
     <term><option>--verbose, -v</option></term>
     <listitem>
