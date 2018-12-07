@@ -7,6 +7,6 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/update-checker
+ExecStart=/usr/sbin/update-checker --profile systemd
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
