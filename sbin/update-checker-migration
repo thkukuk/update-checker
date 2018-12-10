@@ -181,27 +181,31 @@ else
     if config_file
       if options[:profile]
         profile="global-#{options[:profile]}"
+        if !config_file.has_section?(profile)
+          profile="global"
+        end
       else
         profile="global"
       end
       data = config_file[profile]
       argument = data["output"]
-      print "argument=#{argument}\n"
-      argument = argument.delete(" \t\r\n")
-      argument.split(',').each do |arg|
-        case arg
-        when "stdout"
-          output_stdout=true
-        when "issue"
-          output_issue=true
-        when "salt"
-          if !File.directory?("/etc/salt")
-            $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+      if argument
+        argument = argument.delete(" \t\r\n")
+        argument.split(',').each do |arg|
+          case arg
+          when "stdout"
+            output_stdout=true
+          when "issue"
+            output_issue=true
+          when "salt"
+            if !File.directory?("/etc/salt")
+              $stderr.puts "ERROR: no salt installed! Ignoring salt output.\n"
+            else
+              output_salt=true
+            end
           else
-            output_salt=true
+            $stderr.puts "ERROR: unknown output value: #{arg}\n"
           end
-        else
-          $stderr.puts "ERROR: unknown output value: #{arg}\n"
         end
       end
     end
