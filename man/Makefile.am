@@ -6,7 +6,7 @@
 
 CLEANFILES = $(MANS) $(DATA) update-checker.index.xml xml_helper.pyc
 
-EXTRA_DIST = $(MANS) $(XMLS) $(DATA) custom-html.xsl \
+EXTRA_DIST = $(MANS) $(XMLS) $(DATA) custom-html.xsl custom-man.xsl \
 	make-man-index.py xml_helper.py update-checker.index.xml
 
 man_MANS = update-checker-migration.8 update-checker.conf.5 \

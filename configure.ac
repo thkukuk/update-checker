@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT(update-checker, 1.0)
+AC_INIT(update-checker, 1.1)
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([sbin/update-checker])
 AC_PREFIX_DEFAULT(/usr)
@@ -7,24 +7,15 @@ AC_PREFIX_DEFAULT(/usr)
 AC_SUBST(PACKAGE)
 AC_SUBST(VERSION)
 
-if test ${libexecdir} = '${exec_prefix}/libexec'
+if test "${exec_prefix}" = "NONE"
 then
-  libexecdir='${exec_prefix}/lib'
-  if test "${exec_prefix}" = "NONE"
-  then
-    TMPFILESDIR=${prefix}/lib/tmpfiles.d
-    SYSTEMDDIR=${prefix}/lib/systemd/system
-  else
-    TMPFILESDIR=${exec_prefix}/lib/tmpfiles.d
-    SYSTEMDDIR=${exec_prefix}/lib/systemd/system
-  fi
+  TMPFILESDIR=${prefix}/lib/tmpfiles.d
+  SYSTEMDDIR=${prefix}/lib/systemd/system
 else
-  TMPFILESDIR=${libexecdir}/tmpfiles.d
-  SYSTEMDDIR=${libexecdir}/systemd/system
+  TMPFILESDIR=${exec_prefix}/lib/tmpfiles.d
+  SYSTEMDDIR=${exec_prefix}/lib/systemd/system
 fi
 AC_SUBST(TMPFILESDIR)
-AC_SUBST(ISSUEDIR)
-AC_SUBST(UDEVRULESDIR)
 AC_SUBST(SYSTEMDDIR)
 
 AC_PROG_INSTALL

@@ -3,3 +3,5 @@
 #
 
 sbin_SCRIPTS = update-checker update-checker-migration
+
+EXTRA_DIST = $(SCRIPTS)
